@@ -20,3 +20,5 @@ jobs:
         run: npm install
       - name: Build TypeScript
         run: npm run build
+      - name: Run tests
+        run: npm test
