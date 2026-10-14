@@ -1,77 +1,71 @@
-
+here
 export interface CreemPayment {
   id: string;
-  customerEmail?: string;
-  productId?: string;
   amount: number;
   currency: string;
   status: string;
-  createdAt?: string;
-}
-
-export interface DataFastEvent {
-  name: string;
-  revenue: number;
-  currency: string;
-  paymentId: string;
   customerEmail?: string;
+  visitorId?: string;
 }
 
 export interface BridgeOptions {
-  datafastWebsiteId: string;
-  apiKey?: string;
+  datafastApiKey: string;
   endpoint?: string;
 }
 
 export function createCreemDataFastBridge(
   options: BridgeOptions
 ) {
-  if (!options.datafastWebsiteId) {
-    throw new Error("DataFast website ID is required");
+  if (!options.datafastApiKey) {
+    throw new Error("DataFast API key is required");
   }
 
   const endpoint =
-    options.endpoint ?? "https://datafa.st/api/v1/events";
+    options.endpoint ??
+    "https://datafa.st/api/v1/payments";
 
   return {
-    async trackPayment(payment: CreemPayment): Promise<void> {
+    async trackPayment(
+      payment: CreemPayment
+    ): Promise<void> {
       if (payment.status !== "paid") {
         return;
       }
 
-      if (!payment.id || payment.amount <= 0) {
-        throw new Error("Invalid payment details");
+      if (!payment.id || !payment.currency) {
+        throw new Error("Payment ID and currency are required");
       }
 
-      const event: DataFastEvent = {
-        name: "purchase",
-        revenue: payment.amount,
+      if (
+        !Number.isFinite(payment.amount) ||
+        payment.amount <= 0
+      ) {
+        throw new Error("Amount must be positive");
+      }
+
+      const body = {
+        amount: payment.amount,
         currency: payment.currency,
-        paymentId: payment.id,
-        customerEmail: payment.customerEmail,
+        transaction_id: payment.id,
+        email: payment.customerEmail,
+        datafast_visitor_id: payment.visitorId,
       };
 
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${options.datafastApiKey}`,
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${options.apiKey ?? ""}`,
         },
-        body: JSON.stringify({
-          website_id: options.datafastWebsiteId,
-          event_name: event.name,
-          revenue: event.revenue,
-          currency: event.currency,
-          payment_id: event.paymentId,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
+        const message = await response.text();
         throw new Error(
-          `DataFast request failed: ${response.status}`
+          `DataFast API error (${response.status}): ${message}`
         );
       }
     },
   };
 }
-￼Enter
