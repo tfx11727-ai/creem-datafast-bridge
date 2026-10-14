@@ -1,4 +1,4 @@
-herename: CI
+name: CI
 
 on:
   push:
