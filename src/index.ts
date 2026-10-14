@@ -1,4 +1,32 @@
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verifyCreemWebhookSignature(
+  rawBody: string | Buffer,
+  signature: string,
+  webhookSecret: string
+): boolean {
+  if (!signature || !webhookSecret) {
+    return false;
+  }
+
+  const expected = createHmac("sha256", webhookSecret)
+    .update(rawBody)
+    .digest("hex");
+
+  const providedBuffer = Buffer.from(signature, "hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+
+  if (
+    providedBuffer.length !== expectedBuffer.length ||
+    providedBuffer.length === 0
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
 export interface CreemPayment {
   id: string;
   amount: number;
