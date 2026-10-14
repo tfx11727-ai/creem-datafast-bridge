@@ -1,42 +1,27 @@
 
 {
   "name": "creem-datafast-bridge",
-  "version": "0.1.0",
-  "description": "TypeScript bridge for CREEM checkout attribution and DataFast payment events",
-  "license": "MIT",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "TypeScript bridge for CREEM payments and DataFast analytics",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./browser": {
-      "types": "./dist/browser.d.ts",
-      "import": "./dist/browser.js"
-    }
-  },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc",
     "test": "node --test"
   },
-  "engines": {
-    "node": ">=18"
-  },
+  "keywords": [
+    "creem",
+    "datafast",
+    "payments",
+    "analytics",
+    "typescript"
+  ],
+  "license": "MIT",
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
-  },
-  "peerDependencies": {
-    "creem": ">=0.1.0"
-  },
-  "peerDependenciesMeta": {
-    "creem": {
-      "optional": true
-    }
+    "typescript": "^5.8.3"
   }
 }
-￼Enter
