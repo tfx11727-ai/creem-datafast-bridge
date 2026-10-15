@@ -97,3 +97,94 @@ export function createCreemDataFastBridge(
     },
   };
 }
+function creemAmountToMajorUnits(
+  amount: number,
+  currency: string
+): number {
+  const decimals = new Intl.NumberFormat("en", {
+    style: "currency",
+    currency,
+  }).resolvedOptions().maximumFractionDigits;
+
+  return amount / Math.pow(10, decimals);
+}
+
+export function createCreemWebhookHandler(
+  bridge: ReturnType<typeof createCreemDataFastBridge>,
+  webhookSecret: string
+) {
+  return async (
+    rawBody: string | Buffer,
+    signature: string | undefined
+  ): Promise<{ status: number; body: string }> => {
+    if (
+      !signature ||
+      !verifyCreemWebhookSignature(
+        rawBody,
+        signature,
+        webhookSecret
+      )
+    ) {
+      return { status: 401, body: "Invalid signature" };
+    }
+
+    let event: any;
+
+    try {
+      event = JSON.parse(rawBody.toString());
+    } catch {
+      return { status: 400, body: "Invalid JSON" };
+    }
+
+    try {
+      const object = event.object;
+
+      if (event.eventType === "checkout.completed") {
+        const order = object?.order;
+
+        if (order?.status === "paid") {
+          const currency = String(order.currency ?? "").toUpperCase();
+
+          await bridge.trackPayment({
+            id: order.id,
+            amount: creemAmountToMajorUnits(
+              order.amount,
+              currency
+            ),
+            currency,
+            status: "paid",
+            customerEmail: object?.customer?.email,
+            visitorId: object?.metadata?.datafast_visitor_id,
+          });
+        }
+      } else if (event.eventType === "subscription.paid") {
+        const currency = String(
+          object?.product?.currency ?? ""
+        ).toUpperCase();
+
+        if (
+          object?.last_transaction_id &&
+          currency &&
+          Number.isFinite(object?.product?.price)
+        ) {
+          await bridge.trackPayment({
+            id: object.last_transaction_id,
+            amount: creemAmountToMajorUnits(
+              object.product.price,
+              currency
+            ),
+            currency,
+            status: "paid",
+            customerEmail: object?.customer?.email,
+            visitorId: object?.metadata?.datafast_visitor_id,
+          });
+        }
+      }
+
+      return { status: 200, body: "OK" };
+    } catch {
+      return { status: 500, body: "Webhook processing failed" };
+    }
+  };
+}
+
