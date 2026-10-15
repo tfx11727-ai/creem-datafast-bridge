@@ -1,31 +1,5 @@
-here
+
 import { createHmac, timingSafeEqual } from "node:crypto";
-
-export function verifyCreemWebhookSignature(
-  rawBody: string | Buffer,
-  signature: string,
-  webhookSecret: string
-): boolean {
-  if (!signature || !webhookSecret) {
-    return false;
-  }
-
-  const expected = createHmac("sha256", webhookSecret)
-    .update(rawBody)
-    .digest("hex");
-
-  const providedBuffer = Buffer.from(signature, "hex");
-  const expectedBuffer = Buffer.from(expected, "hex");
-
-  if (
-    providedBuffer.length !== expectedBuffer.length ||
-    providedBuffer.length === 0
-  ) {
-    return false;
-  }
-
-  return timingSafeEqual(providedBuffer, expectedBuffer);
-}
 
 export interface CreemPayment {
   id: string;
@@ -41,6 +15,30 @@ export interface BridgeOptions {
   endpoint?: string;
 }
 
+export function verifyCreemWebhookSignature(
+  rawBody: string | Buffer,
+  signature: string,
+  webhookSecret: string
+): boolean {
+  if (!signature || !webhookSecret) return false;
+
+  const expected = createHmac("sha256", webhookSecret)
+    .update(rawBody)
+    .digest("hex");
+
+  const provided = Buffer.from(signature, "hex");
+  const expectedBuffer = Buffer.from(expected, "hex");
+
+  if (
+    provided.length !== expectedBuffer.length ||
+    provided.length === 0
+  ) {
+    return false;
+  }
+
+  return timingSafeEqual(provided, expectedBuffer);
+}
+
 export function createCreemDataFastBridge(
   options: BridgeOptions
 ) {
@@ -49,20 +47,15 @@ export function createCreemDataFastBridge(
   }
 
   const endpoint =
-    options.endpoint ??
-    "https://datafa.st/api/v1/payments";
+    options.endpoint ?? "https://datafa.st/api/v1/payments";
 
   return {
-    async trackPayment(
-      payment: CreemPayment
-    ): Promise<void> {
-      if (payment.status !== "paid") {
-        return;
-     
+    async trackPayment(payment: CreemPayment): Promise<void> {
+      if (payment.status !== "paid") return;
 
       if (!payment.id || !payment.currency) {
         throw new Error("Payment ID and currency are required");
-    
+      }
 
       if (
         !Number.isFinite(payment.amount) ||
@@ -71,43 +64,34 @@ export function createCreemDataFastBridge(
         throw new Error("Amount must be positive");
       }
 
-      const body = {
-        amount: payment.amount,
-        currency: payment.currency,
-        transaction_id: payment.id,
-        email: payment.customerEmail,
-        datafast_visitor_id: payment.visitorId,
-      };
-
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${options.datafastApiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          amount: payment.amount,
+          currency: payment.currency,
+          transaction_id: payment.id,
+          email: payment.customerEmail,
+          datafast_visitor_id: payment.visitorId,
+        }),
       });
 
       if (!response.ok) {
-        const message = await response.text();
         throw new Error(
-          `DataFast API error (${response.status}): ${message}`
+          `DataFast API error (${response.status}): ${await response.text()}`
         );
       }
     },
   };
 }
-function creemAmountToMajorUnits(
-  amount: number,
-  currency: string
-): number {
-  const decimals = new Intl.NumberFormat("en", {
-    style: "currency",
-    currency,
-  }).resolvedOptions().maximumFractionDigits;
 
-  return amount / Math.pow(10, decimals);
-}
+type WebhookEvent = {
+  eventType?: string;
+  object?: any;
+};
 
 export function createCreemWebhookHandler(
   bridge: ReturnType<typeof createCreemDataFastBridge>,
@@ -128,10 +112,10 @@ export function createCreemWebhookHandler(
       return { status: 401, body: "Invalid signature" };
     }
 
-    let event: any;
+    let event: WebhookEvent;
 
     try {
-      event = JSON.parse(rawBody.toString());
+      event = JSON.parse(rawBody.toString()) as WebhookEvent;
     } catch {
       return { status: 400, body: "Invalid JSON" };
     }
@@ -141,16 +125,22 @@ export function createCreemWebhookHandler(
 
       if (event.eventType === "checkout.completed") {
         const order = object?.order;
+        const amount = order?.amount;
+        const currency = String(
+          order?.currency ?? ""
+        ).toUpperCase();
 
-        if (order?.status === "paid") {
-          const currency = String(order.currency ?? "").toUpperCase();
-
+        if (
+          order?.status === "paid" &&
+          order?.id &&
+          typeof amount === "number" &&
+          Number.isFinite(amount) &&
+          amount > 0 &&
+          currency
+        ) {
           await bridge.trackPayment({
-            id: order.id,
-            amount: creemAmountToMajorUnits(
-              amount,
-              currency
-            ),
+            id: String(order.id),
+            amount,
             currency,
             status: "paid",
             customerEmail: object?.customer?.email,
@@ -158,21 +148,21 @@ export function createCreemWebhookHandler(
           });
         }
       } else if (event.eventType === "subscription.paid") {
+        const amount = object?.product?.price;
         const currency = String(
           object?.product?.currency ?? ""
         ).toUpperCase();
 
         if (
           object?.last_transaction_id &&
-          currency &&
-          Number.isFinite(object?.product?.price)
+          typeof amount === "number" &&
+          Number.isFinite(amount) &&
+          amount > 0 &&
+          currency
         ) {
           await bridge.trackPayment({
-            id: object.last_transaction_id,
-            amount: creemAmountToMajorUnits(
-              object.product.price,
-              currency
-            ),
+            id: String(object.last_transaction_id),
+            amount,
             currency,
             status: "paid",
             customerEmail: object?.customer?.email,
@@ -183,8 +173,10 @@ export function createCreemWebhookHandler(
 
       return { status: 200, body: "OK" };
     } catch {
-      return { status: 500, body: "Webhook processing failed" };
+      return {
+        status: 500,
+        body: "Webhook processing failed",
+      };
     }
   };
 }
-
