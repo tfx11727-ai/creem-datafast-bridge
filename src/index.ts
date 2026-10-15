@@ -142,7 +142,13 @@ export function createCreemWebhookHandler(
       if (event.eventType === "checkout.completed") {
         const order = object?.order;
 
-        if (order?.status === "paid") {
+        const amount = order?.amount;
+
+if (
+  order?.status === "paid" &&
+  typeof amount === "number" &&
+  Number.isFinite(amount)
+) {
           const currency = String(order.currency ?? "").toUpperCase();
 
           await bridge.trackPayment({
