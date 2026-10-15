@@ -58,11 +58,11 @@ export function createCreemDataFastBridge(
     ): Promise<void> {
       if (payment.status !== "paid") {
         return;
-      }
+     
 
       if (!payment.id || !payment.currency) {
         throw new Error("Payment ID and currency are required");
-      }
+    
 
       if (
         !Number.isFinite(payment.amount) ||
@@ -142,19 +142,13 @@ export function createCreemWebhookHandler(
       if (event.eventType === "checkout.completed") {
         const order = object?.order;
 
-        const amount = order?.amount;
-
-if (
-  order?.status === "paid" &&
-  typeof amount === "number" &&
-  Number.isFinite(amount)
-) {
+        if (order?.status === "paid") {
           const currency = String(order.currency ?? "").toUpperCase();
 
           await bridge.trackPayment({
             id: order.id,
             amount: creemAmountToMajorUnits(
-              order.amount,
+              amount,
               currency
             ),
             currency,
